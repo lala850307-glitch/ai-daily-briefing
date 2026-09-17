@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import smtplib
+import tempfile
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -68,12 +69,37 @@ def build_audio_script(text):
     body = re.sub(r"^#+\s*", "", body, flags=re.MULTILINE)
     return body.replace("*", "").replace("-", "")
 
-# 4. 使用 Edge-TTS 生成台灣中文語音
+# 4. 使用 Edge-TTS 生成語音：中英文分段用各自語言的語音合成再接起來，
+#    英文專有名詞（OpenAI、GPT-6 等）才不會被台灣腔語音唸得不清楚
+ZH_VOICE = "zh-TW-HsiaoChenNeural"  # 台灣繁中自然女聲 (也可替換為男聲 zh-TW-YunJheNeural)
+EN_VOICE = "en-US-JennyNeural"
+
+def split_language_segments(text):
+    pattern = re.compile(r"[A-Za-z][A-Za-z0-9\-]*(?:[ \t]+[A-Za-z][A-Za-z0-9\-]*)*")
+    segments = []
+    last_end = 0
+    for m in pattern.finditer(text):
+        if m.start() > last_end:
+            segments.append((ZH_VOICE, text[last_end:m.start()]))
+        segments.append((EN_VOICE, m.group()))
+        last_end = m.end()
+    if last_end < len(text):
+        segments.append((ZH_VOICE, text[last_end:]))
+    return [(voice, seg) for voice, seg in segments if seg.strip()]
+
 async def text_to_speech(text, output_file):
-    # 使用台灣繁中自然女聲 (也可替換為男聲 zh-TW-YunJheNeural)
-    voice = "zh-TW-HsiaoChenNeural"
-    communicate = edge_tts.Communicate(text, voice, rate="+5%")
-    await communicate.save(output_file)
+    segments = split_language_segments(text)
+    audio_bytes = bytearray()
+    for voice, segment_text in segments:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+            tmp_path = tmp.name
+        communicate = edge_tts.Communicate(segment_text, voice, rate="+5%")
+        await communicate.save(tmp_path)
+        with open(tmp_path, "rb") as f:
+            audio_bytes += f.read()
+        os.remove(tmp_path)
+    with open(output_file, "wb") as f:
+        f.write(audio_bytes)
 
 # 5. Gmail 會過濾信件內文中的 <style> 區塊，樣式一律改成內嵌 style=""
 EMAIL_TAG_STYLES = {
