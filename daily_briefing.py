@@ -1,12 +1,17 @@
 import os
+import re
 import asyncio
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
 import edge_tts
+import markdown
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # 1. 環境變數設定
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -53,25 +58,42 @@ def generate_briefing():
         raise RuntimeError("Gemini 未回傳任何內容（可能被安全過濾攔截或無搜尋結果）")
     return response.text
 
-# 3. 使用 Edge-TTS 生成台灣中文語音
+# 3. 把完整分析文字轉換成口語化語音稿（只保留 1~4 段，換成白話標題）
+AUDIO_SECTION_TITLES = ["1、最新即時新聞", "2、過去", "3、現在", "4、未來"]
+
+def build_audio_script(text):
+    # 第 5 段「跨界思維遷移題」是留給讀者思考用的，語音不需要唸出來
+    body = re.split(r"##\s*5\.", text, maxsplit=1)[0]
+
+    # 把「## 1. 【時事事實錨點（The Pivot）】」這類含英文術語的標題換成白話標題
+    headers = re.findall(r"##\s*\d+\.\s*【.*?】", body)
+    for header, title in zip(headers, AUDIO_SECTION_TITLES):
+        body = body.replace(header, title)
+
+    # 去除主標題與剩餘的 Markdown 符號，避免唸出符號本身
+    body = re.sub(r"^#\s*", "", body, flags=re.MULTILINE)
+    return body.replace("*", "").replace("-", "")
+
+# 4. 使用 Edge-TTS 生成台灣中文語音
 async def text_to_speech(text, output_file):
     # 使用台灣繁中自然女聲 (也可替換為男聲 zh-TW-YunJheNeural)
     voice = "zh-TW-HsiaoChenNeural"
-    # 過濾掉 Markdown 符號使朗讀更順暢
-    clean_text = text.replace("#", "").replace("*", "").replace("-", "")
-    communicate = edge_tts.Communicate(clean_text, voice, rate="+5%")
+    communicate = edge_tts.Communicate(text, voice, rate="+5%")
     await communicate.save(output_file)
 
-# 4. 發送包含真實播放按鈕的 HTML 郵件
+# 5. 發送包含真實播放按鈕的 HTML 郵件
 def send_email(briefing_text):
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"【AI 破局晨報】{today_str} (含即點即聽語音)"
+    msg["Subject"] = f"每日AI晨報 {today_str}"
     msg["From"] = GMAIL_USER
     msg["To"] = GMAIL_USER
 
     # 純文字 fallback
     text_part = MIMEText(f"語音收聽連結：{audio_public_url}\n\n{briefing_text}", "plain", "utf-8")
     msg.attach(text_part)
+
+    # 把 Gemini 產出的 Markdown 轉成真正的 HTML（標題、粗體、清單）
+    briefing_html = markdown.markdown(briefing_text, extensions=["extra"])
 
     # 格式化為 HTML
     html_content = f"""
@@ -91,8 +113,15 @@ def send_email(briefing_text):
       </div>
 
       <!-- 晨報本文 -->
-      <div style="background-color: #ffffff; padding: 28px; border-radius: 12px; max-width: 680px; margin: 0 auto; color: #1e293b; line-height: 1.7; white-space: pre-wrap;">
-{briefing_text}
+      <div style="background-color: #ffffff; padding: 28px; border-radius: 12px; max-width: 680px; margin: 0 auto; color: #1e293b; line-height: 1.8;">
+        <style>
+          h1 {{ font-size: 22px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin: 0 0 20px 0; }}
+          h2 {{ font-size: 17px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 10px; margin: 24px 0 12px 0; }}
+          ul, ol {{ padding-left: 22px; margin: 8px 0; }}
+          li {{ margin-bottom: 6px; }}
+          strong {{ color: #0f172a; }}
+        </style>
+        {briefing_html}
       </div>
     </div>
     """
@@ -108,7 +137,8 @@ if __name__ == "__main__":
     briefing = generate_briefing()
 
     print("正在合成繁體中文語音 (Edge-TTS)...")
-    asyncio.run(text_to_speech(briefing, audio_filename))
+    audio_script = build_audio_script(briefing)
+    asyncio.run(text_to_speech(audio_script, audio_filename))
 
     print("正在發送電子郵件...")
     send_email(briefing)

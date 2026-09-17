@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install google-genai edge-tts
+          pip install google-genai edge-tts python-dotenv markdown
 
       - name: Run briefing script
         env:
