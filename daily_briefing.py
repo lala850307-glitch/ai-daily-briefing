@@ -48,8 +48,10 @@ def generate_briefing():
     ## 5. 延伸思考
     （一句話的思考題）
     ## 6. 每日英文單字
-    請從本文內容中挑選 3-5 個關鍵英文術語（例如 misalignment、jailbreaking、agent swarm 這類報導中會出現的專業詞彙），依此格式條列：
-    * **英文術語**（中文翻譯）：一句話白話解釋
+    請從本文內容中挑選 3-5 個關鍵英文術語（例如 misalignment、jailbreaking、agent swarm 這類報導中會出現的專業詞彙），
+    每個單字獨立寫成一個小標題，依此格式：
+    ### 英文術語（中文翻譯）
+    一句話白話解釋
     """
     response = client.models.generate_content(
         model='gemini-2.5-flash',
@@ -62,10 +64,9 @@ def generate_briefing():
         raise RuntimeError("Gemini 未回傳任何內容（可能被安全過濾攔截或無搜尋結果）")
     return response.text
 
-# 3. 把完整分析文字轉換成口語化語音稿（1~5 段都唸，第 6 段英文單字表不唸）
+# 3. 把完整分析文字轉換成口語化語音稿（全部段落都唸，去除 Markdown 符號避免唸出符號本身）
 def build_audio_script(text):
-    body = re.split(r"##\s*6\.", text, maxsplit=1)[0]
-    body = re.sub(r"^#+\s*", "", body, flags=re.MULTILINE)
+    body = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
     return body.replace("*", "").replace("-", "")
 
 # 4. 使用 Edge-TTS 生成語音
@@ -91,6 +92,7 @@ async def text_to_speech(text, output_file, retries=3):
 EMAIL_TAG_STYLES = {
     "<h1>": '<h1 style="font-size:22px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin:0 0 20px 0;">',
     "<h2>": '<h2 style="font-size:17px;font-weight:700;color:#2563eb;border-left:4px solid #2563eb;padding-left:10px;margin:24px 0 12px 0;">',
+    "<h3>": '<h3 style="font-size:15px;font-weight:700;color:#0f172a;margin:14px 0 4px 0;">',
     "<p>": '<p style="margin:0 0 12px 0;">',
     "<ul>": '<ul style="padding-left:22px;margin:8px 0;">',
     "<ol>": '<ol style="padding-left:22px;margin:8px 0;">',
