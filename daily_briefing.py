@@ -31,24 +31,22 @@ def generate_briefing():
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"""
     你是跨領域 AI 戰略與系統思維分析導師。請檢索過去 24-48 小時內真實發生的全球重大 AI 科技突破或交集時事（嚴禁虛構），
-    挑選 1 則最能展現打破舊體系規則的深度議題，嚴格依據以下結構撰寫，不可使用任何 Emoji：
+    挑選 1 則最能展現打破舊體系規則的深度議題，依以下結構撰寫，不可使用任何 Emoji。
+
+    第 1~4 段每段都寫成一段連貫的文章段落（3-5 句話），像新聞分析報導一樣直接敘述，
+    不要在段落內再拆出條列項目或粗體小標籤，一個段落只用一個標題：
 
     # [AI 每日跨域破局分析] {today_str}：[核心時事主題]
     ## 1. 最新即時新聞
-    * **消息來源**：
-    * **事件摘要**：
-    * **深層意義**：
+    （一段文字，說明消息來源、發生的事、以及這件事代表的意義）
     ## 2. 過去
-    * **過去做法**：
-    * **核心困境**：
+    （一段文字，說明過去的做法，以及卡在哪裡）
     ## 3. 現在
-    * **突破方式**：
-    * **影響層面**：
+    （一段文字，說明現在的突破方式，以及帶來的影響）
     ## 4. 未來
-    * **後續發展**：
-    * **未解難題**：
+    （一段文字，說明接下來的發展方向，以及還沒解決的問題）
     ## 5. 延伸思考
-    * **思考題**：
+    （一句話的思考題）
     ## 6. 每日英文單字
     請從本文內容中挑選 3-5 個關鍵英文術語（例如 misalignment、jailbreaking、agent swarm 這類報導中會出現的專業詞彙），依此格式條列：
     * **英文術語**（中文翻譯）：一句話白話解釋
@@ -93,6 +91,7 @@ async def text_to_speech(text, output_file, retries=3):
 EMAIL_TAG_STYLES = {
     "<h1>": '<h1 style="font-size:22px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin:0 0 20px 0;">',
     "<h2>": '<h2 style="font-size:17px;font-weight:700;color:#2563eb;border-left:4px solid #2563eb;padding-left:10px;margin:24px 0 12px 0;">',
+    "<p>": '<p style="margin:0 0 12px 0;">',
     "<ul>": '<ul style="padding-left:22px;margin:8px 0;">',
     "<ol>": '<ol style="padding-left:22px;margin:8px 0;">',
     "<li>": '<li style="margin-bottom:6px;">',
