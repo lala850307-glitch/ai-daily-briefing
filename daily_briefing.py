@@ -62,10 +62,9 @@ def generate_briefing():
         raise RuntimeError("Gemini 未回傳任何內容（可能被安全過濾攔截或無搜尋結果）")
     return response.text
 
-# 3. 把完整分析文字轉換成口語化語音稿（只保留 1~4 段，第 5 段是留給讀者思考用的不唸）
+# 3. 把完整分析文字轉換成口語化語音稿（全部段落都唸，去除 Markdown 符號避免唸出符號本身）
 def build_audio_script(text):
-    body = re.split(r"##\s*5\.", text, maxsplit=1)[0]
-    body = re.sub(r"^#+\s*", "", body, flags=re.MULTILINE)
+    body = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
     return body.replace("*", "").replace("-", "")
 
 # 4. 使用 Edge-TTS 生成語音
