@@ -85,7 +85,8 @@ def split_language_segments(text):
         last_end = m.end()
     if last_end < len(text):
         segments.append((ZH_VOICE, text[last_end:]))
-    return [(voice, seg) for voice, seg in segments if seg.strip()]
+    # 純標點符號的片段（例如單獨一個「、」）edge-tts 沒辦法合成，會丟 NoAudioReceived，直接濾掉
+    return [(voice, seg) for voice, seg in segments if re.search(r"\w", seg)]
 
 async def text_to_speech(text, output_file):
     segments = split_language_segments(text)
