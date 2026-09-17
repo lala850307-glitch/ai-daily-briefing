@@ -22,7 +22,9 @@ GITHUB_USER = os.environ.get("GITHUB_REPOSITORY_OWNER")
 GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "/").split("/")[-1]
 
 today_str = datetime.now().strftime("%Y/%m/%d")
-audio_filename = "today_briefing.mp3"
+# 檔名帶時間戳記，確保每次執行的音檔都是獨立檔案，不會被下一次執行覆蓋掉
+# （避免舊信件裡的播放連結，日後點開卻播到別次執行的內容）
+audio_filename = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
 audio_public_url = f"https://{GITHUB_USER}.github.io/{GITHUB_REPO}/{audio_filename}"
 
 # 2. 使用 Gemini 生成五大模組晨報
