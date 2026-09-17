@@ -88,7 +88,7 @@ def split_language_segments(text):
     # 純標點符號的片段（例如單獨一個「、」）edge-tts 沒辦法合成，會丟 NoAudioReceived，直接濾掉
     return [(voice, seg) for voice, seg in segments if re.search(r"\w", seg)]
 
-async def synthesize_segment(voice, segment_text):
+async def synthesize_segment_once(voice, segment_text):
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
         tmp_path = tmp.name
     try:
@@ -99,6 +99,15 @@ async def synthesize_segment(voice, segment_text):
     finally:
         os.remove(tmp_path)
 
+async def synthesize_segment(voice, segment_text, retries=3):
+    for attempt in range(retries):
+        try:
+            return await synthesize_segment_once(voice, segment_text)
+        except edge_tts.exceptions.NoAudioReceived:
+            if attempt == retries - 1:
+                raise
+            await asyncio.sleep(1 + attempt)  # 逐次拉長等待時間再重試
+
 async def text_to_speech(text, output_file):
     segments = split_language_segments(text)
     audio_bytes = bytearray()
@@ -106,11 +115,10 @@ async def text_to_speech(text, output_file):
         try:
             audio_bytes += await synthesize_segment(voice, segment_text)
         except edge_tts.exceptions.NoAudioReceived:
-            try:
-                # 偶爾是暫時性問題，重試一次再放棄
-                audio_bytes += await synthesize_segment(voice, segment_text)
-            except edge_tts.exceptions.NoAudioReceived:
-                print(f"跳過無法合成語音的片段：{segment_text!r}")
+            # 同語音重試 3 次都失敗，換另一種語音做最後一次嘗試，
+            # 確保這段內容一定會被唸出來，不會整段消失不見
+            fallback_voice = ZH_VOICE if voice == EN_VOICE else EN_VOICE
+            audio_bytes += await synthesize_segment(fallback_voice, segment_text)
         await asyncio.sleep(0.3)
     with open(output_file, "wb") as f:
         f.write(audio_bytes)
