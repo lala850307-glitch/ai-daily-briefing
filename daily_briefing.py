@@ -2,7 +2,6 @@ import os
 import re
 import asyncio
 import smtplib
-import tempfile
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -71,59 +70,24 @@ def build_audio_script(text):
     body = re.sub(r"^#+\s*", "", body, flags=re.MULTILINE)
     return body.replace("*", "").replace("-", "")
 
-# 4. 使用 Edge-TTS 生成語音：中英文分段用各自語言的語音合成再接起來，
-#    英文專有名詞（OpenAI、GPT-6 等）才不會被台灣腔語音唸得不清楚
-ZH_VOICE = "zh-TW-HsiaoChenNeural"  # 台灣繁中自然女聲 (也可替換為男聲 zh-TW-YunJheNeural)
-EN_VOICE = "en-US-JennyNeural"
+# 4. 使用 Edge-TTS 生成語音
+#    （曾嘗試中英文分段切換不同語音，語氣不連貫、切換處會頓一下，聽感差，改用單一多語言語音模型，
+#     同一個模型直接處理中英混合文字，英文發音清楚又不會有語氣斷層；中文腔調待實際試聽確認）
+VOICE = "en-US-AvaMultilingualNeural"
 
-def split_language_segments(text):
-    pattern = re.compile(r"[A-Za-z][A-Za-z0-9\-]*(?:[ \t]+[A-Za-z][A-Za-z0-9\-]*)*")
-    segments = []
-    last_end = 0
-    for m in pattern.finditer(text):
-        if m.start() > last_end:
-            segments.append((ZH_VOICE, text[last_end:m.start()]))
-        segments.append((EN_VOICE, m.group()))
-        last_end = m.end()
-    if last_end < len(text):
-        segments.append((ZH_VOICE, text[last_end:]))
-    # 純標點符號的片段（例如單獨一個「、」）edge-tts 沒辦法合成，會丟 NoAudioReceived，直接濾掉
-    return [(voice, seg) for voice, seg in segments if re.search(r"\w", seg)]
+async def synthesize_once(text, voice, output_file):
+    communicate = edge_tts.Communicate(text, voice, rate="+5%")
+    await communicate.save(output_file)
 
-async def synthesize_segment_once(voice, segment_text):
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
-        tmp_path = tmp.name
-    try:
-        communicate = edge_tts.Communicate(segment_text, voice, rate="+5%")
-        await communicate.save(tmp_path)
-        with open(tmp_path, "rb") as f:
-            return f.read()
-    finally:
-        os.remove(tmp_path)
-
-async def synthesize_segment(voice, segment_text, retries=3):
+async def text_to_speech(text, output_file, retries=3):
     for attempt in range(retries):
         try:
-            return await synthesize_segment_once(voice, segment_text)
+            await synthesize_once(text, VOICE, output_file)
+            return
         except edge_tts.exceptions.NoAudioReceived:
             if attempt == retries - 1:
                 raise
             await asyncio.sleep(1 + attempt)  # 逐次拉長等待時間再重試
-
-async def text_to_speech(text, output_file):
-    segments = split_language_segments(text)
-    audio_bytes = bytearray()
-    for voice, segment_text in segments:
-        try:
-            audio_bytes += await synthesize_segment(voice, segment_text)
-        except edge_tts.exceptions.NoAudioReceived:
-            # 同語音重試 3 次都失敗，換另一種語音做最後一次嘗試，
-            # 確保這段內容一定會被唸出來，不會整段消失不見
-            fallback_voice = ZH_VOICE if voice == EN_VOICE else EN_VOICE
-            audio_bytes += await synthesize_segment(fallback_voice, segment_text)
-        await asyncio.sleep(0.3)
-    with open(output_file, "wb") as f:
-        f.write(audio_bytes)
 
 # 5. Gmail 會過濾信件內文中的 <style> 區塊，樣式一律改成內嵌 style=""
 EMAIL_TAG_STYLES = {
