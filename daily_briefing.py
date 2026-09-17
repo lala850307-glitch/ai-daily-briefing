@@ -59,20 +59,27 @@ def generate_briefing():
     （一段文字的思考題，可以怎麼做呢）
     ## 6. 每日英文單字
     請從本文內容中挑選 3-5 個關鍵英文術語（例如 misalignment、jailbreaking、agent swarm 這類報導中會出現的專業詞彙），
-    每個單字獨立寫成一個小標題，依此格式：
-    ### 英文術語（中文翻譯）
+    每個單字獨立寫成一個小標題，依此格式（標題也不要用括號）：
+    ### 英文術語 也就是 中文翻譯
     一句話白話解釋
     """
     response = client.models.generate_content(
         model='gemini-2.5-flash',
         contents=prompt,
         config=types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())]
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+            thinking_config=types.ThinkingConfig(include_thoughts=False),
         )
     )
     if not response.text:
         raise RuntimeError("Gemini 未回傳任何內容（可能被安全過濾攔截或無搜尋結果）")
-    return response.text
+
+    text = response.text
+    # 防呆：如果模型把思考過程或未格式化的草稿也一起輸出，只保留從固定標題開頭（# AI 每日跨域破局分析）開始的正式內容
+    match = re.search(r"#\s*AI 每日跨域破局分析", text)
+    if match:
+        text = text[match.start():]
+    return text
 
 # 3. 把完整分析文字轉換成口語化語音稿（全部段落都唸，去除 Markdown 符號避免唸出符號本身）
 def build_audio_script(text):
