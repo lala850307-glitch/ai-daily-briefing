@@ -32,20 +32,24 @@ def generate_briefing():
     挑選 1 則最能展現打破舊體系規則的深度議題，嚴格依據以下結構撰寫，不可使用任何 Emoji：
 
     # [AI 每日跨域破局分析] {today_str}：[核心時事主題]
-    ## 1. 【時事事實錨點（The Pivot）】
-    * 報導出處 / 訪談對象：
-    * 核心事實摘錄：
-    * 本質定義：
-    ## 2. 【回溯過去（The Past: 該領域原本卡死在哪裡？）】
-    * 傳統運作模式：
-    * 結構性死結（The Bottleneck）：
-    ## 3. 【立足現在（The Present: 破局切入點與連鎖效應）】
-    * 實質破局路徑：
-    * 生態系連鎖效應：
-    ## 4. 【推演未來（The Future: 已知限制與下一道深水區）】
-    * 報導指出的後續方向：
-    * 客觀遭遇的下一個壁壘：
-    ## 5. 【跨界思維遷移題（Strategic Judgment）】
+    ## 1. 最新即時新聞
+    * **消息來源**：
+    * **事件摘要**：
+    * **深層意義**：
+    ## 2. 過去
+    * **過去做法**：
+    * **核心困境**：
+    ## 3. 現在
+    * **突破方式**：
+    * **影響層面**：
+    ## 4. 未來
+    * **後續發展**：
+    * **未解難題**：
+    ## 5. 延伸思考
+    * **思考題**：
+    ## 6. 每日英文單字
+    請從本文內容中挑選 3-5 個關鍵英文術語（例如 misalignment、jailbreaking、agent swarm 這類報導中會出現的專業詞彙），依此格式條列：
+    * **英文術語**（中文翻譯）：一句話白話解釋
     """
     response = client.models.generate_content(
         model='gemini-2.5-flash',
@@ -58,20 +62,10 @@ def generate_briefing():
         raise RuntimeError("Gemini 未回傳任何內容（可能被安全過濾攔截或無搜尋結果）")
     return response.text
 
-# 3. 把完整分析文字轉換成口語化語音稿（只保留 1~4 段，換成白話標題）
-AUDIO_SECTION_TITLES = ["1、最新即時新聞", "2、過去", "3、現在", "4、未來"]
-
+# 3. 把完整分析文字轉換成口語化語音稿（只保留 1~4 段，第 5 段是留給讀者思考用的不唸）
 def build_audio_script(text):
-    # 第 5 段「跨界思維遷移題」是留給讀者思考用的，語音不需要唸出來
     body = re.split(r"##\s*5\.", text, maxsplit=1)[0]
-
-    # 把「## 1. 【時事事實錨點（The Pivot）】」這類含英文術語的標題換成白話標題
-    headers = re.findall(r"##\s*\d+\.\s*【.*?】", body)
-    for header, title in zip(headers, AUDIO_SECTION_TITLES):
-        body = body.replace(header, title)
-
-    # 去除主標題與剩餘的 Markdown 符號，避免唸出符號本身
-    body = re.sub(r"^#\s*", "", body, flags=re.MULTILINE)
+    body = re.sub(r"^#+\s*", "", body, flags=re.MULTILINE)
     return body.replace("*", "").replace("-", "")
 
 # 4. 使用 Edge-TTS 生成台灣中文語音
@@ -81,10 +75,25 @@ async def text_to_speech(text, output_file):
     communicate = edge_tts.Communicate(text, voice, rate="+5%")
     await communicate.save(output_file)
 
-# 5. 發送包含真實播放按鈕的 HTML 郵件
+# 5. Gmail 會過濾信件內文中的 <style> 區塊，樣式一律改成內嵌 style=""
+EMAIL_TAG_STYLES = {
+    "<h1>": '<h1 style="font-size:22px;font-weight:700;color:#0f172a;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin:0 0 20px 0;">',
+    "<h2>": '<h2 style="font-size:17px;font-weight:700;color:#2563eb;border-left:4px solid #2563eb;padding-left:10px;margin:24px 0 12px 0;">',
+    "<ul>": '<ul style="padding-left:22px;margin:8px 0;">',
+    "<ol>": '<ol style="padding-left:22px;margin:8px 0;">',
+    "<li>": '<li style="margin-bottom:6px;">',
+    "<strong>": '<strong style="color:#0f172a;">',
+}
+
+def inline_email_styles(html):
+    for tag, styled_tag in EMAIL_TAG_STYLES.items():
+        html = html.replace(tag, styled_tag)
+    return html
+
+# 6. 發送包含真實播放按鈕的 HTML 郵件
 def send_email(briefing_text):
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"每日AI晨報 {today_str}"
+    msg["Subject"] = f"『每日AI晨報』 {today_str}"
     msg["From"] = GMAIL_USER
     msg["To"] = GMAIL_USER
 
@@ -94,6 +103,7 @@ def send_email(briefing_text):
 
     # 把 Gemini 產出的 Markdown 轉成真正的 HTML（標題、粗體、清單）
     briefing_html = markdown.markdown(briefing_text, extensions=["extra"])
+    briefing_html = inline_email_styles(briefing_html)
 
     # 格式化為 HTML
     html_content = f"""
@@ -114,13 +124,6 @@ def send_email(briefing_text):
 
       <!-- 晨報本文 -->
       <div style="background-color: #ffffff; padding: 28px; border-radius: 12px; max-width: 680px; margin: 0 auto; color: #1e293b; line-height: 1.8;">
-        <style>
-          h1 {{ font-size: 22px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin: 0 0 20px 0; }}
-          h2 {{ font-size: 17px; font-weight: 700; color: #2563eb; border-left: 4px solid #2563eb; padding-left: 10px; margin: 24px 0 12px 0; }}
-          ul, ol {{ padding-left: 22px; margin: 8px 0; }}
-          li {{ margin-bottom: 6px; }}
-          strong {{ color: #0f172a; }}
-        </style>
         {briefing_html}
       </div>
     </div>
