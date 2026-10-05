@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import asyncio
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -26,12 +27,43 @@ today_str = datetime.now().strftime("%Y/%m/%d")
 audio_filename = f"briefing_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp3"
 audio_public_url = f"https://{GITHUB_USER}.github.io/{GITHUB_REPO}/{audio_filename}"
 
+# 記錄最近寫過的標題，下次產生時要求避開相同或相似主題，避免每天都繞著同一個議題打轉
+HISTORY_FILE = "history.json"
+HISTORY_LIMIT = 30
+
+def load_history():
+    if not os.path.exists(HISTORY_FILE):
+        return []
+    with open(HISTORY_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+def save_history(history, briefing_text):
+    match = re.search(r"^#\s+(.+)$", briefing_text, flags=re.MULTILINE)
+    if not match:
+        return
+    history.append({"date": today_str, "title": match.group(1).strip()})
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history[-HISTORY_LIMIT:], f, ensure_ascii=False, indent=2)
+
+def build_avoid_block(history):
+    if not history:
+        return ""
+    titles = "\n".join(f"    - {h['date']} {h['title']}" for h in history)
+    return f"""
+    以下是最近已經寫過的主題。請不要選同一則新聞或同一事件的後續報導，
+    也盡量避開跟這些太相似的議題，換一個不同的主題：
+{titles}
+    """
+
 # 2. 使用 Gemini 生成五大模組晨報
-def generate_briefing():
+def generate_briefing(history):
     client = genai.Client(api_key=GEMINI_API_KEY)
     prompt = f"""
-    你是跨領域 AI 戰略與系統思維分析導師。請檢索過去 24-48 小時內真實發生的全球重大 AI 科技突破或交集時事（嚴禁虛構），
-    挑選 1 則最能展現打破舊體系規則的深度議題，依以下結構撰寫，不可使用任何 Emoji。
+    你是 AI 科技新聞分析師。請用 Google 搜尋檢索 {today_str} 之前 24-48 小時內發布的全球 AI 科技最新消息（嚴禁虛構），
+    範圍包含任何 AI 科技相關主題，例如新模型與新產品發表、AI 數據分析、企業導入與應用、晶片與運算基礎設施、
+    研究成果、產業與投資動態等。挑選 1 則最新且最重要的新聞，依以下結構撰寫，不可使用任何 Emoji。
+    新聞必須是 48 小時內發布的，不要選更早的舊聞，並在第一段寫出消息來源與發布日期。
+    {build_avoid_block(history)}
 
     「最新即時新聞」段落之後的內容（過去、現在、未來、延伸思考）不要再各自加小標題，
     直接寫成一篇連貫的文章（4-6 段話），像新聞深度分析報導一樣有起承轉合地直接敘述下去，
@@ -55,7 +87,7 @@ def generate_briefing():
     過去的做法與困境、現在的突破方式與影響、未來的發展方向與未解問題、
     以及一個值得思考的延伸問題）
     ## 每日英文單字
-    請從本文內容中挑選 3-5 個關鍵英文術語（例如 misalignment、jailbreaking、agent swarm 這類報導中會出現的專業詞彙），
+    請從本文內容中挑選 3-5 個文中實際出現的關鍵英文術語，
     每個單字獨立寫成一個小標題，依此格式（標題也不要用括號）：
     ### 英文術語 也就是 中文翻譯
     一句話白話解釋
@@ -166,7 +198,8 @@ def send_email(briefing_text):
 
 if __name__ == "__main__":
     print("正在檢索與生成晨報...")
-    briefing = generate_briefing()
+    history = load_history()
+    briefing = generate_briefing(history)
 
     print("正在合成繁體中文語音 (Edge-TTS)...")
     audio_script = build_audio_script(briefing)
@@ -174,4 +207,5 @@ if __name__ == "__main__":
 
     print("正在發送電子郵件...")
     send_email(briefing)
+    save_history(history, briefing)
     print("執行完畢！")

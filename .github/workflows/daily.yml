@@ -36,10 +36,10 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git add briefing_*.mp3
+          git add briefing_*.mp3 history.json
 
-          # 只保留最近 7 天的音檔，避免 repo 隨時間無限增長
-          cutoff=$(date -d '7 days ago' +%Y%m%d)
+          # 只保留最近 3 天的音檔，避免 repo 隨時間無限增長
+          cutoff=$(date -d '3 days ago' +%Y%m%d)
           for f in briefing_*.mp3; do
             [ -e "$f" ] || continue
             fdate=$(echo "$f" | grep -oE '[0-9]{8}' | head -1)
